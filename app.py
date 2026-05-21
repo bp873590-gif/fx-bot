@@ -1,13 +1,14 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
 import requests
 
-# --- APP KI SETTING (Mobile Responsive) ---
+# --- APP CONFIG ---
 st.set_page_config(page_title="Mera SMC Trading App", layout="centered")
 
-st.title("📱 My Smart Money Dashboard")
-st.write("Job ke sath sukoon wali trading — BUY aur SHORT dono signals ek sath.")
+st.title("📊 My Smart Money Charting App")
+st.write("Ab poora din live chart dekho mobile par, automatic SMC markings ke sath.")
 
 # --- TELEGRAM SETTINGS ---
 BOT_TOKEN = "8831983662:AAE0r8keSZ5p1Kb1JynIHH_0r_A0e7RqsEA"
@@ -19,61 +20,66 @@ def send_telegram_alert(message):
     try: requests.post(url, json=payload)
     except: pass
 
-# --- PAIRS SELECT KARNE KA OPTION ---
-pair_input = st.selectbox(
-    "Forex Pair Ya Gold Chuno:",
-    ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X"]
-)
-
+# --- USER SELECTION ---
+pair_input = st.selectbox("Forex Pair Ya Gold Chuno:", ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X"])
 timeframe = st.selectbox("Timeframe Chuno:", ["1h", "4h", "1d"], index=0)
 
-# --- DATA DOWNLOAD AUR LOGIC ---
-if st.button("🔴 Live Chart Aur Signal Dekho"):
-    with st.spinner("Market se footprints nikal raha hu..."):
-        
-        # Data fetch karna
-        df = yf.download(pair_input, period="1mo", interval=timeframe)
-        
-        if not df.empty and len(df) > 15:
-            last_closed = df.iloc[-2]
-            older_2 = df.iloc[-4]
-            current_close = float(last_closed['Close'])
-            
-            # SMC Logic (BOS + FVG)
-            recent_high = float(df['High'].iloc[-12:-2].max())
-            recent_low = float(df['Low'].iloc[-12:-2].min())
-            
-            # Buy Conditions
-            is_bullish_BOS = current_close > recent_high
-            bullish_FVG = float(last_closed['Low']) > float(older_2['High'])
-            
-            # Short (Sell) Conditions
-            is_bearish_BOS = current_close < recent_low
-            bearish_FVG = float(last_closed['High']) < float(older_2['Low'])
-            
-            # --- APP PAR RESULT DIKHANA ---
-            st.subheader("📊 Market Ka Haal:")
-            st.metric(label="Current Price", value=f"{current_close:.5f}")
-            
-            st.write("📝 Pichli Candles Ka Data:")
-            st.dataframe(df[['Open', 'High', 'Low', 'Close']].tail(5))
-            
-            clean_name = pair_input.replace("=X", "")
-            
-            # 1. GREEN SIGNAL (BUY)
-            if is_bullish_BOS and bullish_FVG:
-                msg = f"🚀 PRO SMC BUY: {clean_name}\n⏱️ TF: {timeframe}\n💰 Price: {current_close:.5f}\n🎯 Target: Lamba Profit (1:3+)"
-                st.success(msg)
-                send_telegram_alert(msg)
-                
-            # 2. RED SIGNAL (SHORT / SELL)
-            elif is_bearish_BOS and bearish_FVG:
-                msg = f"🚨 PRO SMC SHORT (SELL): {clean_name}\n⏱️ TF: {timeframe}\n💰 Price: {current_close:.5f}\n🎯 Target: Lamba Profit (1:3+)"
-                st.error(msg)
-                send_telegram_alert(msg)
-                
-            # 3. NO SIGNAL
-            else:
-                st.warning("💤 Abhi koi pakka trade nahi hai. Chill karo, job par dhyan do!")
-        else:
-            st.error("Data nahi mil pa raha hai, thodi der baad try karein.")
+# --- DATA DOWNLOAD ---
+df = yf.download(pair_input, period="1mo", interval=timeframe)
+
+if not df.empty and len(df) > 15:
+    # Columns name fix karna
+    df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+    
+    last_closed = df.iloc[-2]
+    older_2 = df.iloc[-4]
+    current_close = float(last_closed['Close'])
+    
+    # --- SMC CALCULATION ---
+    recent_high = float(df['High'].iloc[-12:-2].max())
+    recent_low = float(df['Low'].iloc[-12:-2].min())
+    
+    is_bullish_BOS = current_close > recent_high
+    is_bearish_BOS = current_close < recent_low
+    bullish_FVG = float(last_closed['Low']) > float(older_2['High'])
+    bearish_FVG = float(last_closed['High']) < float(older_2['Low'])
+
+    # --- 📈 CANDLESTICK CHART MAKING ---
+    fig = go.Figure(data=[go.Candlestick(
+        x=df.index,
+        open=df['Open'],
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        name="Market Candles"
+    )])
+
+    # --- AUTOMATIC MARKINGS ON CHART ---
+    # Recent High (Resistance) ki line draw karna
+    fig.add_hline(y=recent_high, line_dash="dash", line_color="green", annotation_text="SMC High / BOS Level")
+    # Recent Low (Support) ki line draw karna
+    fig.add_hline(y=recent_low, line_dash="dash", line_color="red", annotation_text="SMC Low / BOS Level")
+
+    # Mobile friendly settings for chart
+    fig.update_layout(
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=450
+    )
+    
+    # Display the Chart on Mobile
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- SIGNAL STATUS BOX BELOW CHART ---
+    clean_name = pair_input.replace("=X", "")
+    st.subheader("📢 Signal Status:")
+    
+    if is_bullish_BOS and bullish_FVG:
+        st.success(f"🚀 PRO BUY ZONE ACTIVE on {clean_name}! (BOS + FVG)")
+    elif is_bearish_BOS and bearish_FVG:
+        st.error(f"🚨 PRO SHORT ZONE ACTIVE on {clean_name}! (BOS + FVG)")
+    else:
+        st.warning("💤 No clear institutional setup right now. Range bound market.")
+
+else:
+    st.error("Market data load nahi ho pa raha hai.")
