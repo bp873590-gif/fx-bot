@@ -66,22 +66,20 @@ if not df.empty and len(df) > 20:
     current_price = float(closes[-1]) 
 
     # --- 4. CORE SMC LOGIC & ZONE CALCULATIONS ---
-    # Last 15 candles ka structural high/low nikalna breakout check karne ke liye
+    # Last 15 candles ka structural range
     recent_high = float(highs[-15:-2].max())
     recent_low = float(lows[-15:-2].min())
     
     last_fvg_top, last_fvg_bottom, ob_price = 0, 0, 0
     for i in range(15, len(df)-2):
-        if highs[i-2] < lows[i]: # Bullish FVG & OB setup
+        if highs[i-2] < lows[i]: # Bullish Structure
             last_fvg_top, last_fvg_bottom, ob_price = lows[i], highs[i-2], lows[i-2]
-        if lows[i-2] > highs[i]: # Bearish FVG & OB setup
+        if lows[i-2] > highs[i]: # Bearish Structure
             last_fvg_top, last_fvg_bottom, ob_price = lows[i-2], highs[i], highs[i-2]
 
-    # --- 5. 📢 AUTOMATED SINGLE-TRIGGER SIGNAL SYSTEM ---
+    # --- 5. 📢 SINGLE-TRIGGER ANTI-SPAM ENGINE ---
     clean_name = selected_pair_label.split()[-1]
     st.markdown(f"### 🛡️ Live Action Plan: {clean_name}")
-    
-    # Dashboard pe details print karne ke liye taaki calculation live dikhe
     st.info(f"**Live Price:** {current_price:.5f} | **OB Level:** {ob_price:.5f} | **BOS High:** {recent_high:.5f} | **BOS Low:** {recent_low:.5f}")
     
     current_alert_key = f"alert_state_{clean_name}_{timeframe}"
@@ -89,49 +87,58 @@ if not df.empty and len(df) > 20:
     if "alert_history" not in st.session_state:
         st.session_state.alert_history = {}
     
-    # SL/TP Pip Buffer Calculations
+    # Dynamic Buffer based on Asset Class
     is_gold_or_btc = "GOLD" in selected_pair_label or "BITCOIN" in selected_pair_label
-    buffer = 1.50 if is_gold_or_btc else 0.00150
+    buffer = 2.50 if is_gold_or_btc else 0.00150
     tp_multiplier = 3 
     
-    # --- PRO ENTRY RE-DESIGNED LOGIC ---
+    # --- 🔥 MATHEMATICALLY PERFECT TRADING LOGIC 🔥 ---
     
-    # A. BULLISH ENTRY TRIGGER (Price breakout ke baad agar FVG ya OB zone ke upar ya aas-paas retest kare)
-    if current_price > recent_high or (ob_price > 0 and abs(current_price - ob_price) / ob_price < 0.005):
-        # Stop Loss safe structure (OB line se thoda niche)
-        sl_level = ob_price - (buffer * 0.3) if ob_price > 0 else current_price - buffer
-        risk = max(current_price - sl_level, buffer)
+    # A. VALID BULLISH BUY TRIGGER
+    # Price structural high ke upar ho AUR entry zone (OB line) ke paas pullback kar chuki ho
+    if current_price > recent_high and ob_price > 0 and current_price >= ob_price:
+        # Buy me Stop Loss hamesha Order block line ke NEECHE hoga!
+        sl_level = ob_price - (buffer * 0.5)
+        
+        # Agar calculation galat ho rahi ho toh system fall-back buffer use karega
+        if sl_level >= current_price:
+            sl_level = current_price - buffer
+            
+        risk = current_price - sl_level
         tp_level = current_price + (risk * tp_multiplier)
         
-        st.success(f"🟢 **LIVE ENTRY ACTIVE (BUY):**\n\n* **Action:** BUY NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
+        st.success(f"🟢 **LIVE ENTRY ACTIVE (BUY):**\n\n* **Action:** BUY NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f} 📉 (Safe Below OB)\n* **Take Profit (TP):** {tp_level:.5f} 📈")
         
-        # Anti-Spam Memory: Sirf ek baar message jayega
         if st.session_state.alert_history.get(current_alert_key) != "BUY_SENT":
-            msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target: 1:3 Risk Reward Ratio"
+            msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target Reward: 1:3"
             send_telegram_alert(msg)
             st.session_state.alert_history[current_alert_key] = "BUY_SENT"
             
-    # B. BEARISH ENTRY TRIGGER (Price breakdown ke baad retest kare)
-    elif current_price < recent_low or (ob_price > 0 and abs(current_price - ob_price) / ob_price < 0.005):
-        # Stop Loss safe structure (OB line se thoda upar)
-        sl_level = ob_price + (buffer * 0.3) if ob_price > 0 else current_price + buffer
-        risk = max(sl_level - current_price, buffer)
+    # B. VALID BEARISH SHORT/SELL TRIGGER
+    # Price structural low ke niche ho AUR supply zone (OB line) ke paas retest kar rahi ho
+    elif current_price < recent_low and ob_price > 0 and current_price <= ob_price:
+        # Sell me Stop Loss hamesha Order block line ke UPAR hoga!
+        sl_level = ob_price + (buffer * 0.5)
+        
+        if sl_level <= current_price:
+            sl_level = current_price + buffer
+            
+        risk = sl_level - current_price
         tp_level = current_price - (risk * tp_multiplier)
         
-        st.error(f"🔴 **LIVE ENTRY ACTIVE (SELL):**\n\n* **Action:** SELL NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
+        st.error(f"🔴 **LIVE ENTRY ACTIVE (SELL):**\n\n* **Action:** SELL NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f} 📈 (Safe Above OB)\n* **Take Profit (TP):** {tp_level:.5f} 📉")
         
-        # Anti-Spam Memory: Sirf ek baar message jayega
         if st.session_state.alert_history.get(current_alert_key) != "SELL_SENT":
-            msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target: 1:3 Risk Reward Ratio"
+            msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target Reward: 1:3"
             send_telegram_alert(msg)
             st.session_state.alert_history[current_alert_key] = "SELL_SENT"
 
-    # C. NO-TRADE CONSOLIDATION ZONE RESET
+    # C. REAL NO-TRADE WATCHLIST ZONE
     else:
-        st.warning("💤 **NO-TRADE ZONE:** Market rules ke hisab se structure ke andar range bound hai.")
-        # Agar market wapas center range me aa jaye toh memory clear karo taaki naye breakout pe alert de sake
+        st.warning("💤 **NO-TRADE ZONE:** Market rules ke hisab se criteria poora nahi hai ya price range bound consolidation me hai.")
+        # Reset state so that next valid touch triggers a fresh message
         if current_alert_key in st.session_state.alert_history: 
             del st.session_state.alert_history[current_alert_key]
 
 else:
-    st.error("Market data access issue. Please check pair settings or try again.")
+    st.error("Market data access issue. Please check network or reload.")
