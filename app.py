@@ -19,7 +19,7 @@ st.markdown("""
 st.title("🦅 SMC PRO SIGNAL ENGINE")
 st.write("---")
 
-# --- 2. FIXED CRASH-PROOF TELEGRAM CONNECTOR ---
+# --- 2. CRASH-PROOF TELEGRAM CONNECTOR ---
 BOT_TOKEN = "8831983662:AAE0r8keSZ5p1Kb1JynIHH_0r_A0e7RqsEA"
 CHAT_ID = "905358263"
 
@@ -33,7 +33,7 @@ def send_telegram_alert(message):
     except:
         pass
 
-# --- 3. ALL FOREX PAIRS + CORRECT GOLD TICKER ---
+# --- 3. ALL FOREX PAIRS + GOLD + BITCOIN ---
 pair_mapping = {
     "👑 GOLD (XAUUSD)": "GC=F",
     "🇬🇧🇯🇵 GBPJPY (The Beast)": "GBPJPY=X",
@@ -66,77 +66,72 @@ if not df.empty and len(df) > 20:
     current_price = float(closes[-1]) 
 
     # --- 4. CORE SMC LOGIC & ZONE CALCULATIONS ---
+    # Last 15 candles ka structural high/low nikalna breakout check karne ke liye
     recent_high = float(highs[-15:-2].max())
     recent_low = float(lows[-15:-2].min())
     
     last_fvg_top, last_fvg_bottom, ob_price = 0, 0, 0
     for i in range(15, len(df)-2):
-        if highs[i-2] < lows[i]: # Bullish FVG
+        if highs[i-2] < lows[i]: # Bullish FVG & OB setup
             last_fvg_top, last_fvg_bottom, ob_price = lows[i], highs[i-2], lows[i-2]
-        if lows[i-2] > highs[i]: # Bearish FVG
+        if lows[i-2] > highs[i]: # Bearish FVG & OB setup
             last_fvg_top, last_fvg_bottom, ob_price = lows[i-2], highs[i], highs[i-2]
 
-    # --- 5. 📢 AUTOMATED SINGLE-TRIGGER SIGNAL SYSTEM (NO SPAM) ---
+    # --- 5. 📢 AUTOMATED SINGLE-TRIGGER SIGNAL SYSTEM ---
     clean_name = selected_pair_label.split()[-1]
     st.markdown(f"### 🛡️ Live Action Plan: {clean_name}")
-    st.write(f"**Current Price:** {current_price:.5f}")
     
-    # Unique key har pair aur timeframe ke liye alert tracking ke liye
+    # Dashboard pe details print karne ke liye taaki calculation live dikhe
+    st.info(f"**Live Price:** {current_price:.5f} | **OB Level:** {ob_price:.5f} | **BOS High:** {recent_high:.5f} | **BOS Low:** {recent_low:.5f}")
+    
     current_alert_key = f"alert_state_{clean_name}_{timeframe}"
     
-    # Initialize history dictionary in session state if not exists
     if "alert_history" not in st.session_state:
         st.session_state.alert_history = {}
     
-    # SL/TP Buffer Multipliers
+    # SL/TP Pip Buffer Calculations
     is_gold_or_btc = "GOLD" in selected_pair_label or "BITCOIN" in selected_pair_label
     buffer = 1.50 if is_gold_or_btc else 0.00150
     tp_multiplier = 3 
     
-    # A. PRO BUY ENTRY TRIGGER
-    if current_price > recent_high and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
-        sl_level = ob_price - (buffer * 0.5) if ob_price > 0 else current_price - buffer
-        risk = current_price - sl_level
+    # --- PRO ENTRY RE-DESIGNED LOGIC ---
+    
+    # A. BULLISH ENTRY TRIGGER (Price breakout ke baad agar FVG ya OB zone ke upar ya aas-paas retest kare)
+    if current_price > recent_high or (ob_price > 0 and abs(current_price - ob_price) / ob_price < 0.005):
+        # Stop Loss safe structure (OB line se thoda niche)
+        sl_level = ob_price - (buffer * 0.3) if ob_price > 0 else current_price - buffer
+        risk = max(current_price - sl_level, buffer)
         tp_level = current_price + (risk * tp_multiplier)
         
-        st.success(f"🟢 **LIVE ENTRY ACTIVE (BUY):**\n\n* **Entry:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
+        st.success(f"🟢 **LIVE ENTRY ACTIVE (BUY):**\n\n* **Action:** BUY NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
         
-        # 👑 LOGIC: Agar is pair ka BUY signal pehle nahi bheja gaya, tabhi bhejo!
+        # Anti-Spam Memory: Sirf ek baar message jayega
         if st.session_state.alert_history.get(current_alert_key) != "BUY_SENT":
-            msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target: 1:3 RR"
+            msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target: 1:3 Risk Reward Ratio"
             send_telegram_alert(msg)
-            st.session_state.alert_history[current_alert_key] = "BUY_SENT" # Block further messages
+            st.session_state.alert_history[current_alert_key] = "BUY_SENT"
             
-    # B. PRO SHORT ENTRY TRIGGER
-    elif current_price < recent_low and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
-        sl_level = ob_price + (buffer * 0.5) if ob_price > 0 else current_price + buffer
-        risk = sl_level - current_price
+    # B. BEARISH ENTRY TRIGGER (Price breakdown ke baad retest kare)
+    elif current_price < recent_low or (ob_price > 0 and abs(current_price - ob_price) / ob_price < 0.005):
+        # Stop Loss safe structure (OB line se thoda upar)
+        sl_level = ob_price + (buffer * 0.3) if ob_price > 0 else current_price + buffer
+        risk = max(sl_level - current_price, buffer)
         tp_level = current_price - (risk * tp_multiplier)
         
-        st.error(f"🔴 **LIVE ENTRY ACTIVE (SELL):**\n\n* **Entry:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
+        st.error(f"🔴 **LIVE ENTRY ACTIVE (SELL):**\n\n* **Action:** SELL NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
         
-        # 👑 LOGIC: Agar is pair ka SELL signal pehle nahi bheja gaya, tabhi bhejo!
+        # Anti-Spam Memory: Sirf ek baar message jayega
         if st.session_state.alert_history.get(current_alert_key) != "SELL_SENT":
-            msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target: 1:3 RR"
+            msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🦅 Target: 1:3 Risk Reward Ratio"
             send_telegram_alert(msg)
-            st.session_state.alert_history[current_alert_key] = "SELL_SENT" # Block further messages
-            
-    # C. ADVANCE WATCHLIST & STATE RESET
-    elif current_price > recent_high and last_fvg_top > 0 and current_price > last_fvg_top:
-        st.info(f"👀 **Watchlist:** {clean_name} ne breakout kiya hai. Zone me wapas aane par signal active hoga.")
-        # Price zone se bahar nikal gayi, toh alert state reset karo taaki naye setup par naya alert ja sake
-        if current_alert_key in st.session_state.alert_history: 
-            del st.session_state.alert_history[current_alert_key]
-        
-    elif current_price < recent_low and last_fvg_top > 0 and current_price < last_fvg_bottom:
-        st.info(f"👀 **Watchlist:** Breakdown ho chuka hai. Pullback ka wait karo.")
-        if current_alert_key in st.session_state.alert_history: 
-            del st.session_state.alert_history[current_alert_key]
-        
+            st.session_state.alert_history[current_alert_key] = "SELL_SENT"
+
+    # C. NO-TRADE CONSOLIDATION ZONE RESET
     else:
-        st.warning("💤 **NO-TRADE ZONE:** Market ranges ke andar chal raha hai.")
+        st.warning("💤 **NO-TRADE ZONE:** Market rules ke hisab se structure ke andar range bound hai.")
+        # Agar market wapas center range me aa jaye toh memory clear karo taaki naye breakout pe alert de sake
         if current_alert_key in st.session_state.alert_history: 
             del st.session_state.alert_history[current_alert_key]
 
 else:
-    st.error("Market data access issue or invalid token. Please check back later.")
+    st.error("Market data access issue. Please check pair settings or try again.")
