@@ -1,12 +1,10 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import matplotlib.pyplot as plt
-import mpld3
-import streamlit.components.v1 as components
+import plotly.graph_objects as go
 import requests
 
-# --- 1. PREMIUM VIP DARK THEME DESIGN ---
+# --- 1. PREMIUM VIP DARK THEME & LAYOUT CONFIG ---
 st.set_page_config(page_title="SMC Institutional Terminal", layout="centered")
 
 st.markdown("""
@@ -16,20 +14,20 @@ st.markdown("""
     footer {visibility: hidden;}
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
-    h1, h2, h3, p, span { color: #d1d4dc !important; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🦅 SMC PRO TERMINAL")
 st.write("---")
 
-# --- 2. CRASH-PROOF TELEGRAM CONNECTOR ---
+# --- 2. FIXED CRASH-PROOF TELEGRAM CONNECTOR ---
 BOT_TOKEN = "8831983662:AAE0r8keSZ5p1Kb1JynIHH_0r_A0e7RqsEA"
 CHAT_ID = "905358263"
 
 def send_telegram_alert(message):
     token_str = str(BOT_TOKEN).strip()
     chat_str = str(CHAT_ID).strip()
+    # Fixed URL structure to avoid syntax and value errors
     url = f"https://api.telegram.org/bot{token_str}/sendMessage"
     payload = {"chat_id": chat_str, "text": str(message)}
     try:
@@ -37,7 +35,7 @@ def send_telegram_alert(message):
     except:
         pass
 
-# --- 3. ALL FOREX PAIRS + CORRECT GOLD TICKER ---
+# --- 3. FOREX PAIRS + GOLD ---
 pair_mapping = {
     "👑 GOLD (XAUUSD)": "GC=F",
     "🇬🇧🇯🇵 GBPJPY (The Beast)": "GBPJPY=X",
@@ -64,15 +62,27 @@ df = yf.download(pair_input, period="1mo", interval=timeframe)
 if not df.empty and len(df) > 20:
     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     
-    # Auto detect date/datetime index to avoid KeyErrors
-    df = df.reset_index()
-    time_col = 'Date' if 'Date' in df.columns else 'Datetime'
-    
+    # Date vs Datetime auto-resolver
+    if 'Date' in df.columns:
+        df_index_vals = df['Date']
+    elif 'Datetime' in df.columns:
+        df_index_vals = df['Datetime']
+    else:
+        df_index_vals = df.index
+        
     highs = df['High'].values
     lows = df['Low'].values
     closes = df['Close'].values
     opens = df['Open'].values
-    current_price = float(closes[-1])
+    current_price = float(closes[-1]) 
+    
+    # Base Candlestick Graphics
+    fig = go.Figure(data=[go.Candlestick(
+        x=df_index_vals, open=opens, high=highs, low=lows, close=closes,
+        name="Price Action", 
+        increasing_line_color='#00ffb3', decreasing_line_color='#ff3366',
+        increasing_fillcolor='#00ffb3', decreasing_fillcolor='#ff3366'
+    )])
 
     # --- 4. CORE SMC LOGIC & ZONE CALCULATIONS ---
     recent_high = float(highs[-15:-2].max())
@@ -85,88 +95,97 @@ if not df.empty and len(df) > 20:
         if lows[i-2] > highs[i]: # Bearish FVG
             last_fvg_top, last_fvg_bottom, ob_price = lows[i-2], highs[i], highs[i-2]
 
-    # --- 5. 🔥 NEW INTERACTIVE MOBILE-FRIENDLY SMOOTH CHART ENGINE 🔥 ---
-    # Matplotlib with Dark Aesthetic for ultra-stable mobile pinch zoom
-    fig, ax = plt.subplots(figsize=(7, 4.5), facecolor='#0c0d14')
-    ax.set_facecolor('#0c0d14')
-    
-    # Custom Candlestick Drawing for extreme performance
-    for i in range(len(df)):
-        color = '#00ffb3' if closes[i] >= opens[i] else '#ff3366'
-        ax.plot([i, i], [lows[i], highs[i]], color=color, linewidth=1)
-        ax.bar(i, closes[i] - opens[i], bottom=opens[i], color=color, width=0.6)
+    # Shading the Fair Value Gap Box
+    if last_fvg_top > 0:
+        fig.add_shape(type="rect",
+            x0=df_index_vals[-12], y0=last_fvg_bottom, x1=df_index_vals[-1], y1=last_fvg_top,
+            fillcolor="rgba(0, 255, 179, 0.05)", line=dict(width=0), name="FVG"
+        )
         
-    # Plotting Levels cleanly
+    # Institutional Order Block Line
     if ob_price > 0:
-        ax.axhline(y=ob_price, color='#ffcc00', linestyle='-', linewidth=1.2, label='OB ZONE')
-    ax.axhline(y=recent_high, color='#00bcff', linestyle=':', linewidth=1, label='BOS HIGH')
-    ax.axhline(y=recent_low, color='#ff5500', linestyle=':', linewidth=1, label='BOS LOW')
-    ax.axhline(y=current_price, color='#ff3366', linestyle='--', linewidth=1.5, label=f'LIVE: {current_price:.4f}')
+        fig.add_hline(y=ob_price, line_dash="solid", line_color="#ffcc00", line_width=1.5,
+                      annotation_text="  OB ZONE", annotation_position="top left")
 
-    # Styling Axes
-    ax.tick_params(colors='#d1d4dc', labelsize=9)
-    ax.grid(color='#1f2231', linestyle='-', linewidth=0.5)
-    ax.yaxis.tick_right() # TradingView Style Right Side Axis
-    for spine in ax.spines.values():
-        spine.set_color('#1f2231')
+    # Structure Break Lines (FIXED NameErrors here)
+    fig.add_hline(y=recent_high, line_dash="dot", line_color="#00bcff", line_width=1, annotation_text="  BOS HIGH")
+    fig.add_hline(y=recent_low, line_dash="dot", line_color="#ff5500", line_width=1, annotation_text="  BOS LOW")
 
-    # Convert to HTML for perfect responsive touch zoom & pan controls
-    html_chart = mpld3.fig_to_html(fig)
-    plt.close(fig)
-    components.html(html_chart, height=460)
+    # LIVE PRICE LEVEL INDICATOR
+    fig.add_hline(y=current_price, line_dash="dash", line_color="#ff3366", line_width=2,
+                  annotation_text=f"  LIVE: {current_price:.5f}", annotation_position="top right",
+                  annotation_font=dict(size=12, color="#ff3366"))
+
+    # --- 5. 🔥 THE PERFECT MOBILE ZOOM SETTING 🔥 ---
+    fig.update_layout(
+        template="plotly_dark",
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=10, r=70, t=10, b=10),
+        height=500,
+        paper_bgcolor='#0c0d14',
+        plot_bgcolor='#0c0d14',
+        dragmode='zoom', # Standard zoom mode to select areas manually
+        yaxis=dict(side="right", gridcolor="#1f2231", fixedrange=False), 
+        xaxis=dict(gridcolor="#1f2231", fixedrange=False) 
+    )
+    
+    # In-built full zoom UI configs
+    st.plotly_chart(fig, use_container_width=True, config={
+        'scrollZoom': True,           # Desktop wheel & Mobile pinch zoom ON
+        'displayModeBar': True,       # Saare clear zoom out / reset buttons screen par rahenge
+        'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'toggleHover'],
+        'doubleClick': 'reset'        # Double tap karte hi zoom automatic normal ho jayega!
+    })
 
     # --- 6. 📢 AUTOMATED READY-TO-TRADE ENTRY + SL / TP LOGIC ---
-    clean_name = selected_pair_label.split()[-1]
+    clean_name = selected_pair_label.split()[-1] 
     st.markdown(f"### 🛡️ Live Execution Plan: {clean_name}")
     
     current_alert_key = f"alert_trigger_{clean_name}_{timeframe}"
     
-    # SL/TP Pip Buffer Calculation based on asset type
+    # SL/TP Buffer Multipliers
     is_gold_or_btc = "GOLD" in selected_pair_label or "BITCOIN" in selected_pair_label
-    buffer = 1.50 if is_gold_or_btc else 0.00150 # Gold me points aur Forex me pips
-    tp_multiplier = 3 # 1:3 Risk Reward Ratio 🔥
+    buffer = 1.50 if is_gold_or_btc else 0.00150
+    tp_multiplier = 3 
     
-    # A. PRO BUY ENTRY TRIGGER WITH SL & TP
+    # A. PRO BUY ENTRY TRIGGER
     if current_price > recent_high and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
         sl_level = ob_price - (buffer * 0.5) if ob_price > 0 else current_price - buffer
         risk = current_price - sl_level
         tp_level = current_price + (risk * tp_multiplier)
         
-        msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🛡️ RR Ratio: 1:3 Institutional Target!"
-        
-        st.success(f"🟢 **LIVE TRADE ACTIVE:**\n\n* **Action:** BUY NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
+        msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}"
+        st.success(f"🟢 **LIVE TRADE ACTIVE:** BUY NOW\n\n* **Entry:** {current_price:.5f} | **SL:** {sl_level:.5f} | **TP:** {tp_level:.5f}")
         
         if current_alert_key not in st.session_state or st.session_state[current_alert_key] != "BUY_TRIGGER":
             st.session_state[current_alert_key] = "BUY_TRIGGER"
             send_telegram_alert(msg)
             
-    # B. PRO SHORT ENTRY TRIGGER WITH SL & TP
+    # B. PRO SHORT ENTRY TRIGGER
     elif current_price < recent_low and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
         sl_level = ob_price + (buffer * 0.5) if ob_price > 0 else current_price + buffer
         risk = sl_level - current_price
         tp_level = current_price - (risk * tp_multiplier)
         
-        msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT/SELL) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}\n🛡️ RR Ratio: 1:3 Institutional Target!"
-        
-        st.error(f"🔴 **LIVE TRADE ACTIVE:**\n\n* **Action:** SELL NOW\n* **Entry Price:** {current_price:.5f}\n* **Stop Loss (SL):** {sl_level:.5f}\n* **Take Profit (TP):** {tp_level:.5f}")
+        msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry: {current_price:.5f}\n🛑 Stop Loss (SL): {sl_level:.5f}\n🎯 Take Profit (TP): {tp_level:.5f}"
+        st.error(f"🔴 **LIVE TRADE ACTIVE:** SELL NOW\n\n* **Entry:** {current_price:.5f} | **SL:** {sl_level:.5f} | **TP:** {tp_level:.5f}")
         
         if current_alert_key not in st.session_state or st.session_state[current_alert_key] != "SHORT_TRIGGER":
             st.session_state[current_alert_key] = "SHORT_TRIGGER"
             send_telegram_alert(msg)
             
-    # C. ADVANCE WATCHLIST (Breakout happened but waiting for pullback)
+    # C. WATCHLIST
     elif current_price > recent_high and last_fvg_top > 0 and current_price > last_fvg_top:
-        st.info(f"👀 **Watchlist:** {clean_name} ne bullish breakout kiya hai. Price ko pullback lekar neeche **{last_fvg_top:.5f}** ke institutional zone me aane do. Jab touch karega tab bot exact SL aur TP ke sath instant trigger bhejega!")
+        st.info(f"👀 **Watchlist:** {clean_name} ne breakout kiya hai. Price ko neeche **{last_fvg_top:.5f}** ke zone me aane do. Bot exact SL/TP calculate karke automatic message bhejega.")
         if current_alert_key in st.session_state: del st.session_state[current_alert_key]
         
     elif current_price < recent_low and last_fvg_top > 0 and current_price < last_fvg_bottom:
-        st.info(f"👀 **Watchlist:** Bearish breakdown ho chuka hai. Price ke wapas upar **{last_fvg_bottom:.5f}** supply zone me retest karne ka wait karo, tabhi high-probability SL/TP entry alert aayega.")
+        st.info(f"👀 **Watchlist:** Breakdown ho chuka hai. Price ke upar **{last_fvg_bottom:.5f}** zone me retest karne ka wait karo.")
         if current_alert_key in st.session_state: del st.session_state[current_alert_key]
         
     else:
-        st.warning("💤 **NO-TRADE ZONE:** Market ranges ke andar consolidation me chal raha hai. Kisi heavy volume breakout ka wait karein.")
-        if current_alert_key in st.session_state:
-            del os.session_state[current_alert_key]
+        st.warning("💤 **NO-TRADE ZONE:** Market ranges ke andar hai.")
+        if current_alert_key in st.session_state: del st.session_state[current_alert_key]
 
 else:
-    st.error("Market data access issue. Please check network or refresh the page.")
+    st.error("Market data access issue. Please reload.")
