@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 
 # --- APP KI SETTING (Mobile Responsive) ---
-st.set_page_config(page_title="Mera SMC Trading App", layout="compact")
+st.set_page_config(page_title="Mera SMC Trading App", layout="centered")
 
 st.title("📱 My Smart Money Dashboard")
 st.write("Job ke sath sukoon wali trading — BUY aur SHORT dono signals ek sath.")
