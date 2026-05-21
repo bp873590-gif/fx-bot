@@ -4,21 +4,23 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 
-# VIP Dark Theme Layout Configuration
-st.set_page_config(page_title="SMC Pro Dashboard", layout="centered")
+# --- PREMIUM NOTIFICATION & UI CLEANUP ---
+st.set_page_config(page_title="SMC Institutional Terminal", layout="centered")
 
+# CSS se faltu borders aur Streamlit ka branding saaf karna (Clean UI)
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
-    h1 { color: #00ffcc; text-align: center; font-family: 'Helvetica'; }
-    .stSelectbox { color: #ffffff; }
+    .main { background-color: #0c0d14; }
+    div.block-container { padding-top: 2rem; padding-bottom: 0rem; }
+    footer {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚡ SMC PRO INSTITUTIONAL DASHBOARD")
+st.title("🦅 SMC PRO TERMINAL")
 st.write("---")
 
-# --- AAPKI TELEGRAM SETTINGS ---
+# --- TELEGRAM DETAILS ---
 BOT_TOKEN = "8831983662:AAE0r8keSZ5p1Kb1JynIHH_0r_A0e7RqsEA"
 CHAT_ID = "905358263"
 
@@ -28,11 +30,14 @@ def send_telegram_alert(message):
     try: requests.post(url, json=payload)
     except: pass
 
-# --- USER SELECTION ---
-pair_input = st.selectbox("🎯 Target Asset:", ["XAUUSD=X", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "BTC-USD"])
-timeframe = st.selectbox("⏱️ Operational Timeframe:", ["1h", "4h", "1d"], index=0)
+# --- CLEAN DROP-DOWNS ---
+col1, col2 = st.columns(2)
+with col1:
+    pair_input = st.selectbox("🎯 Asset:", ["XAUUSD=X", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "BTC-USD"])
+with col2:
+    timeframe = st.selectbox("⏱️ Timeframe:", ["1h", "4h", "1d"], index=0)
 
-# Fetching Data
+# Fetch Data
 df = yf.download(pair_input, period="1mo", interval=timeframe)
 
 if not df.empty and len(df) > 20:
@@ -43,85 +48,89 @@ if not df.empty and len(df) > 20:
     closes = df['Close'].values
     opens = df['Open'].values
     
-    # Interactive Base Chart
+    # 1. LIVE CURRENT PRICE DETECTOR
+    current_price = float(closes[-1]) 
+    
+    # Base Chart Creation
     fig = go.Figure(data=[go.Candlestick(
         x=df.index, open=opens, high=highs, low=lows, close=closes,
-        name="Price Action", increasing_line_color='#00ffcc', decreasing_line_color='#ff3366'
+        name="Price", 
+        increasing_line_color='#00ffb3', decreasing_line_color='#ff3366',
+        increasing_fillcolor='#00ffb3', decreasing_fillcolor='#ff3366'
     )])
 
-    # Scanning for FVG, OB and Structure Breaks
-    last_fvg_top = 0
-    last_fvg_bottom = 0
-    order_block_price = 0
-
+    # --- AUTOMATIC SMC CALCULATION ---
+    recent_high = float(highs[-15:-2].max())
+    recent_low = float(lows[-15:-2].min())
+    
+    # Last FVG & OB detection logic
+    last_fvg_top, last_fvg_bottom, ob_price = 0, 0, 0
     for i in range(15, len(df)-2):
-        # Bullish FVG Detection (Candle i-2 High and Candle i Low)
-        if highs[i-2] < lows[i]:
-            last_fvg_top = lows[i]
-            last_fvg_bottom = highs[i-2]
-            order_block_price = lows[i-2] # Last down candle base
-            
-        # Bearish FVG Detection
-        if lows[i-2] > highs[i]:
-            last_fvg_top = lows[i-2]
-            last_fvg_bottom = highs[i]
-            order_block_price = highs[i-2]
+        if highs[i-2] < lows[i]: # Bullish FVG
+            last_fvg_top, last_fvg_bottom, ob_price = lows[i], highs[i-2], lows[i-2]
+        if lows[i-2] > highs[i]: # Bearish FVG
+            last_fvg_top, last_fvg_bottom, ob_price = lows[i-2], highs[i], highs[i-2]
 
-    # Plotting FVG Zone (Shaded Area)
+    # Shading the FVG Box elegantly
     if last_fvg_top > 0:
         fig.add_shape(type="rect",
-            x0=df.index[-15], y0=last_fvg_bottom, x1=df.index[-1], y1=last_fvg_top,
-            fillcolor="rgba(0, 255, 204, 0.12)", line=dict(color="#00ffcc", width=1),
-            name="Fair Value Gap"
+            x0=df.index[-12], y0=last_fvg_bottom, x1=df.index[-1], y1=last_fvg_top,
+            fillcolor="rgba(0, 255, 179, 0.08)", line=dict(width=0), name="FVG"
         )
         
-    # Plotting Order Block / Demand Zone Line
-    if order_block_price > 0:
-        fig.add_hline(y=order_block_price, line_dash="solid", line_color="#ffcc00", 
-                      annotation_text="🎯 ORDER BLOCK (OB)", annotation_position="top left")
+    # Order Block Line (Yellow)
+    if ob_price > 0:
+        fig.add_hline(y=ob_price, line_dash="solid", line_color="#ffcc00", line_width=1.5,
+                      annotation_text="  OB ZONE", annotation_position="top left")
 
-    # Current Market Structure Lines (BOS/CHoCH Levels)
-    recent_resistance = float(highs[-15:-2].max())
-    recent_support = float(lows[-15:-2].min())
-    current_price = float(closes[-2])
+    # Structure Break Lines (BOS/CHoCH)
+    fig.add_hline(y=recent_resistance, line_dash="dot", line_color="#00bcff", line_width=1, annotation_text="  BOS HIGH")
+    fig.add_hline(y=recent_support, line_dash="dot", line_color="#ff5500", line_width=1, annotation_text="  BOS LOW")
 
-    fig.add_hline(y=recent_resistance, line_dash="dash", line_color="#00bfff", annotation_text="BOS / CHoCH Upside")
-    fig.add_hline(y=recent_support, line_dash="dash", line_color="#ff4500", annotation_text="BOS / CHoCH Downside")
+    # 🔥 2. LIVE PRICE LEVEL INDICATOR LINE (CHAMAKTI HUYI RED LINE) 🔥
+    fig.add_hline(y=current_price, line_dash="dash", line_color="#ff3366", line_width=2,
+                  annotation_text=f"  LIVE: {current_price:.5f}", annotation_position="top right",
+                  annotation_font=dict(size=12, color="#ff3366"))
 
-    # 🔥 FIXED ZOOM & SCROLL FOR MOBILE 🔥
+    # 🔥 TRADINGVIEW MOBILE ZOOM & SCROLL GRAPHICS CONFIG 🔥
     fig.update_layout(
-        template="plotly_dark", 
+        template="plotly_dark",
         xaxis_rangeslider_visible=False,
-        margin=dict(l=5, r=5, t=10, b=5), 
-        height=500,
-        paper_bgcolor='#0e1117', 
-        plot_bgcolor='#0e1117',
-        dragmode='pan' # Touch karne par sirf scroll hoga, galti se zoom nahi hoga!
+        margin=dict(l=10, r=60, t=10, b=10), # Right margin bada kiya taaki price saaf dikhe
+        height=480,
+        paper_bgcolor='#0c0d14',
+        plot_bgcolor='#0c0d14',
+        dragmode='zoom', # DO UNGLI SE MKT ZOOM KARNE KE LIYE RE-ACTIVATED!
+        yaxis=dict(side="right", gridcolor="#1f2231"), # Price labels right side me aayenge bilkul TradingView ki tarah
+        xaxis=dict(gridcolor="#1f2231")
     )
     
-    # Render Chart
-    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+    # Plotly Ko Full Active Zoom Commands Dena
+    st.plotly_chart(fig, use_container_width=True, config={
+        'scrollZoom': True,       # Mouse wheel ya do-finger pinch se zoom hoga
+        'displayModeBar': False,  # Faltu ke toolbars ko chupa diya clean look ke liye
+        'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d']
+    })
 
-    # --- 🎯 PRO TRADING RULES & ALERTS ---
-    st.markdown("### 🗺️ Live Execution Strategy:")
+    # --- LIVE ACTION BLUEPRINT BOX ---
     clean_name = pair_input.replace("=X", "")
+    st.markdown(f"### 🛡️ Strategy: {clean_name}")
     
-    if current_price > recent_resistance and last_fvg_top > 0:
-        msg = f"🚀 **SMC BUY SETUP:** {clean_name}\nMarket ne BOS kiya hai. FVG Zone ({last_fvg_bottom:.5f} - {last_fvg_top:.5f}) ya Order Block ({order_block_price:.5f}) par aate hi BUY entry plan karein."
+    if current_price > recent_high and last_fvg_top > 0:
+        msg = f"🚀 **SMC BUY ALERT:** {clean_name} ne structure break kiya hai. Price jab pullback karke FVG ({last_fvg_bottom:.5f}) ya OB ({ob_price:.5f}) zone me aaye, tabhi long karein."
         st.info(msg)
-        # Ek key session me automatic state save karke duplicate message rokna
         if 'last_alert' not in st.session_state or st.session_state.last_alert != f"BUY_{clean_name}":
             send_telegram_alert(msg)
             st.session_state.last_alert = f"BUY_{clean_name}"
             
-    elif current_price < recent_support and last_fvg_top > 0:
-        msg = f"🚨 **SMC SHORT SETUP:** {clean_name}\nMarket ne structure toda hai. Price ke wapas OB Zone ({order_block_price:.5f}) retest par SHORT entry karein."
+    elif current_price < recent_low and last_fvg_top > 0:
+        msg = f"🚨 **SMC SHORT ALERT:** {clean_name} ne mandi ka signal diya hai. Retest zone ({ob_price:.5f}) par short opportunities dekhein."
         st.error(msg)
         if 'last_alert' not in st.session_state or st.session_state.last_alert != f"SHORT_{clean_name}":
             send_telegram_alert(msg)
             st.session_state.last_alert = f"SHORT_{clean_name}"
     else:
-        st.warning("💤 **NO-TRADE ZONE:** Market abhi ranges ke andar chal raha hai. Kisi setup ka wait karein.")
+        st.warning("💤 **NO-TRADE ZONE:** Market sideway hai. Do-finger se zoom karke liquidity zones track karein.")
 
 else:
-    st.error("Data loading issues, please refresh.")
+    st.error("Data issues, check connection.")
