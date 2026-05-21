@@ -48,7 +48,7 @@ if not df.empty and len(df) > 20:
     closes = df['Close'].values
     opens = df['Open'].values
     
-    # 1. LIVE CURRENT PRICE DETECTOR
+    # LIVE CURRENT PRICE DETECTOR
     current_price = float(closes[-1]) 
     
     # Base Chart Creation
@@ -83,32 +83,31 @@ if not df.empty and len(df) > 20:
         fig.add_hline(y=ob_price, line_dash="solid", line_color="#ffcc00", line_width=1.5,
                       annotation_text="  OB ZONE", annotation_position="top left")
 
-    # Structure Break Lines (BOS/CHoCH)
-    fig.add_hline(y=recent_resistance, line_dash="dot", line_color="#00bcff", line_width=1, annotation_text="  BOS HIGH")
-    fig.add_hline(y=recent_support, line_dash="dot", line_color="#ff5500", line_width=1, annotation_text="  BOS LOW")
+    # Structure Break Lines (BOS/CHoCH) - ERROR FIXED HERE
+    fig.add_hline(y=recent_high, line_dash="dot", line_color="#00bcff", line_width=1, annotation_text="  BOS HIGH")
+    fig.add_hline(y=recent_low, line_dash="dot", line_color="#ff5500", line_width=1, annotation_text="  BOS LOW")
 
-    # 🔥 2. LIVE PRICE LEVEL INDICATOR LINE (CHAMAKTI HUYI RED LINE) 🔥
+    # LIVE PRICE LEVEL INDICATOR LINE (CHAMAKTI HUYI RED LINE)
     fig.add_hline(y=current_price, line_dash="dash", line_color="#ff3366", line_width=2,
                   annotation_text=f"  LIVE: {current_price:.5f}", annotation_position="top right",
                   annotation_font=dict(size=12, color="#ff3366"))
 
-    # 🔥 TRADINGVIEW MOBILE ZOOM & SCROLL GRAPHICS CONFIG 🔥
+    # TRADINGVIEW MOBILE ZOOM & SCROLL GRAPHICS CONFIG
     fig.update_layout(
         template="plotly_dark",
         xaxis_rangeslider_visible=False,
-        margin=dict(l=10, r=60, t=10, b=10), # Right margin bada kiya taaki price saaf dikhe
+        margin=dict(l=10, r=60, t=10, b=10),
         height=480,
         paper_bgcolor='#0c0d14',
         plot_bgcolor='#0c0d14',
-        dragmode='zoom', # DO UNGLI SE MKT ZOOM KARNE KE LIYE RE-ACTIVATED!
-        yaxis=dict(side="right", gridcolor="#1f2231"), # Price labels right side me aayenge bilkul TradingView ki tarah
+        dragmode='zoom', # DO UNGLI SE MKT ZOOM KARNE KE LIYE
+        yaxis=dict(side="right", gridcolor="#1f2231"), # Price labels right side me bilkul TradingView ki tarah
         xaxis=dict(gridcolor="#1f2231")
     )
     
-    # Plotly Ko Full Active Zoom Commands Dena
     st.plotly_chart(fig, use_container_width=True, config={
-        'scrollZoom': True,       # Mouse wheel ya do-finger pinch se zoom hoga
-        'displayModeBar': False,  # Faltu ke toolbars ko chupa diya clean look ke liye
+        'scrollZoom': True,       # Do-finger pinch zoom active
+        'displayModeBar': False,  # Clean look
         'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d']
     })
 
