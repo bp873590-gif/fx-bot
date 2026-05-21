@@ -34,14 +34,28 @@ def send_telegram_alert(message):
     except:
         pass
 
-# --- 3. INPUT SELECTION ---
+# --- 3. ALL FOREX PAIRS + GBPJPY ADDED + GOLD TICKER ---
+pair_mapping = {
+    "👑 GOLD (XAUUSD)": "GC=F",
+    "🇬🇧🇯🇵 GBPJPY (The Beast)": "GBPJPY=X",  # 🔥 GBPJPY BHI AB ANDAR HAI DOST!
+    "🇪🇺 EURUSD": "EURUSD=X",
+    "🇬🇧 GBPUSD": "GBPUSD=X",
+    "🇯🇵 USDJPY": "USDJPY=X",
+    "🇦🇺 AUDUSD": "AUDUSD=X",
+    "🇨🇦 USDCAD": "USDCAD=X",
+    "🇳🇿 NZDUSD": "NZDUSD=X",
+    "🇨🇭 USDCHF": "USDCHF=X",
+    "🪙 BITCOIN": "BTC-USD"
+}
+
 col1, col2 = st.columns(2)
 with col1:
-    pair_input = st.selectbox("🎯 Select Asset:", ["XAUUSD=X", "EURUSD=X", "GBPUSD=X", "USDJPY=X", "BTC-USD"])
+    selected_pair_label = st.selectbox("🎯 Select Asset / Pair:", list(pair_mapping.keys()))
+    pair_input = pair_mapping[selected_pair_label]
 with col2:
     timeframe = st.selectbox("⏱️ Timeframe:", ["1h", "4h", "1d"], index=0)
 
-# Fetch Data
+# Fetch Data from Yahoo Finance
 df = yf.download(pair_input, period="1mo", interval=timeframe)
 
 if not df.empty and len(df) > 20:
@@ -94,32 +108,34 @@ if not df.empty and len(df) > 20:
                   annotation_text=f"  LIVE: {current_price:.5f}", annotation_position="top right",
                   annotation_font=dict(size=12, color="#ff3366"))
 
-    # --- 5. 🔥 TRADINGVIEW ZOOM FIX FOR MOBILE 🔥 ---
+    # --- 5. 🔥 PERFECT TRADINGVIEW MOBILE ZOOM & SCROLL ENGINE 🔥 ---
     fig.update_layout(
         template="plotly_dark",
         xaxis_rangeslider_visible=False,
-        margin=dict(l=10, r=65, t=10, b=10),
-        height=480,
+        margin=dict(l=10, r=70, t=10, b=10), # Price axis badha diya taaki rates katein nahi
+        height=500,
         paper_bgcolor='#0c0d14',
         plot_bgcolor='#0c0d14',
-        dragmode='pan', # 👈 FIXED: Ek finger se sirf scroll hoga, zoom nahi ho jayega!
-        yaxis=dict(side="right", gridcolor="#1f2231"),
-        xaxis=dict(gridcolor="#1f2231")
+        dragmode='pan', # 👈 Single finger se smoothly chart swipe hoga bina atke!
+        yaxis=dict(side="right", gridcolor="#1f2231", fixedrange=False), # 👈 Price zoom open
+        xaxis=dict(gridcolor="#1f2231", fixedrange=False) # 👈 Time/Bars zoom open
     )
     
+    # Advanced mobile configuration logic injection
     st.plotly_chart(fig, use_container_width=True, config={
-        'scrollZoom': True,        # 👈 FIXED: Do finger se stretch karne par makhhan zoom-in / zoom-out chalega!
-        'displayModeBar': False,   
-        'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d']
+        'scrollZoom': True,           # 👈 Do finger se pinch karne par ekdam fluid zoom hoga!
+        'displayModeBar': False,      # Faltu buttons gayab, pure clean UI
+        'doubleClick': 'reset',       # Double tap karne par chart automatically default scale pe aa jayega
+        'showAxisDragHandles': True   # Side bar ko khinch kar bhi manual scale kiya ja sakta hai
     })
 
     # --- 6. 📢 AUTOMATED READY-TO-TRADE ENTRY SIGNAL LOGIC ---
-    clean_name = str(pair_input).replace("=X", "")
+    clean_name = selected_pair_label.split()[-1] 
     st.markdown(f"### 🛡️ Live Action Plan: {clean_name}")
     
     current_alert_key = f"alert_trigger_{clean_name}_{timeframe}"
     
-    # A. PRO BUY ENTRY TRIGGER: Price has broken out AND currently pulled back inside FVG or OB
+    # A. PRO BUY ENTRY TRIGGER
     if current_price > recent_high and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
         msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry Price: {current_price:.5f}\n🛡️ Zone: Price has retested the Institutional Zone! Place your orders."
         st.success(f"🟢 **LIVE ENTRY ACTIVE:** {msg}")
@@ -128,7 +144,7 @@ if not df.empty and len(df) > 20:
             st.session_state[current_alert_key] = "BUY_TRIGGER"
             send_telegram_alert(msg)
             
-    # B. PRO SHORT ENTRY TRIGGER: Price has broken low AND currently retesting the bearish FVG/OB zone
+    # B. PRO SHORT ENTRY TRIGGER
     elif current_price < recent_low and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
         msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT/SELL) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry Price: {current_price:.5f}\n🛡️ Zone: Price retesting the supply zone. Institutional selling active!"
         st.error(f"🔴 **LIVE ENTRY ACTIVE:** {msg}")
@@ -137,9 +153,9 @@ if not df.empty and len(df) > 20:
             st.session_state[current_alert_key] = "SHORT_TRIGGER"
             send_telegram_alert(msg)
             
-    # C. ADVANCE WATCHLIST (Breakout happened but waiting for retest)
+    # C. ADVANCE WATCHLIST
     elif current_price > recent_high and last_fvg_top > 0 and current_price > last_fvg_top:
-        st.info(f"👀 **Watchlist:** {clean_name} ne breakout kiya hai. Abhi chalte market me entry mat lena, price ko neeche **{last_fvg_top:.5f}** ke zone me aane do. Jab touch karega tab bot instant automatic signal bhejega!")
+        st.info(f"👀 **Watchlist:** {clean_name} ne breakout kiya hai. Price ko neeche **{last_fvg_top:.5f}** ke zone me aane do. Jab touch karega tab bot instant automatic signal bhejega!")
         if current_alert_key in st.session_state: del st.session_state[current_alert_key]
         
     elif current_price < recent_low and last_fvg_top > 0 and current_price < last_fvg_bottom:
@@ -152,4 +168,4 @@ if not df.empty and len(df) > 20:
             del st.session_state[current_alert_key]
 
 else:
-    st.error("Market data access issue, please reload the page.")
+    st.error("Market data access issue or invalid token. Please check asset selection or reload.")
