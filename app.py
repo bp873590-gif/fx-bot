@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 
-# --- 1. PREMIUM CLEAN DESEGNING ---
+# --- 1. PREMIUM VIP DARK THEME & LAYOUT CONFIG ---
 st.set_page_config(page_title="SMC Institutional Terminal", layout="centered")
 
 st.markdown("""
@@ -20,12 +20,11 @@ st.markdown("""
 st.title("🦅 SMC PRO TERMINAL")
 st.write("---")
 
-# --- 2. CRASH-PROOF TELEGRAM CONNECTOR (SYNTAX FIXED) ---
+# --- 2. CRASH-PROOF TELEGRAM CONNECTOR ---
 BOT_TOKEN = "8831983662:AAE0r8keSZ5p1Kb1JynIHH_0r_A0e7RqsEA"
 CHAT_ID = "905358263"
 
 def send_telegram_alert(message):
-    # Syntax error ko completely yahan line format me fix kar diya hai
     token_str = str(BOT_TOKEN).strip()
     chat_str = str(CHAT_ID).strip()
     url = f"https://api.telegram.org/bot{token_str}/sendMessage"
@@ -46,7 +45,6 @@ with col2:
 df = yf.download(pair_input, period="1mo", interval=timeframe)
 
 if not df.empty and len(df) > 20:
-    # Tuple columns standard processing (TypeError Solution)
     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     
     highs = df['High'].values
@@ -64,7 +62,7 @@ if not df.empty and len(df) > 20:
         increasing_fillcolor='#00ffb3', decreasing_fillcolor='#ff3366'
     )])
 
-    # --- 4. CORE SMC LOGIC ---
+    # --- 4. CORE SMC LOGIC & ZONE CALCULATIONS ---
     recent_high = float(highs[-15:-2].max())
     recent_low = float(lows[-15:-2].min())
     
@@ -87,7 +85,7 @@ if not df.empty and len(df) > 20:
         fig.add_hline(y=ob_price, line_dash="solid", line_color="#ffcc00", line_width=1.5,
                       annotation_text="  OB ZONE", annotation_position="top left")
 
-    # Structure Break Lines (NameError Safe)
+    # Structure Break Lines
     fig.add_hline(y=recent_high, line_dash="dot", line_color="#00bcff", line_width=1, annotation_text="  BOS HIGH")
     fig.add_hline(y=recent_low, line_dash="dot", line_color="#ff5500", line_width=1, annotation_text="  BOS LOW")
 
@@ -96,7 +94,7 @@ if not df.empty and len(df) > 20:
                   annotation_text=f"  LIVE: {current_price:.5f}", annotation_position="top right",
                   annotation_font=dict(size=12, color="#ff3366"))
 
-    # --- 5. MAXIMUM PINCH-ZOOM & TRADINGVIEW ALIGNED AXIS ---
+    # --- 5. 🔥 TRADINGVIEW ZOOM FIX FOR MOBILE 🔥 ---
     fig.update_layout(
         template="plotly_dark",
         xaxis_rangeslider_visible=False,
@@ -104,38 +102,52 @@ if not df.empty and len(df) > 20:
         height=480,
         paper_bgcolor='#0c0d14',
         plot_bgcolor='#0c0d14',
-        dragmode='zoom', # Mobile do-finger pinch-zoom enable rakha hai
+        dragmode='pan', # 👈 FIXED: Ek finger se sirf scroll hoga, zoom nahi ho jayega!
         yaxis=dict(side="right", gridcolor="#1f2231"),
         xaxis=dict(gridcolor="#1f2231")
     )
     
     st.plotly_chart(fig, use_container_width=True, config={
-        'scrollZoom': True,        # Do-finger stretch features active
-        'displayModeBar': False,   # Clean Interface
+        'scrollZoom': True,        # 👈 FIXED: Do finger se stretch karne par makhhan zoom-in / zoom-out chalega!
+        'displayModeBar': False,   
         'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d']
     })
 
-    # --- 6. CLEAN AUTOMATED ALERTS ---
+    # --- 6. 📢 AUTOMATED READY-TO-TRADE ENTRY SIGNAL LOGIC ---
     clean_name = str(pair_input).replace("=X", "")
-    st.markdown(f"### 🛡️ Execution Blueprint: {clean_name}")
+    st.markdown(f"### 🛡️ Live Action Plan: {clean_name}")
     
-    current_alert_key = f"alert_{clean_name}_{timeframe}"
+    current_alert_key = f"alert_trigger_{clean_name}_{timeframe}"
     
-    if current_price > recent_high and last_fvg_top > 0:
-        msg = f"🚀 SMC BUY ALERT: {clean_name} ({timeframe}) ne structure break kiya hai. Price jab pullback karke FVG ({last_fvg_bottom:.5f}) ya OB ({ob_price:.5f}) zone me aaye, tabhi buy plan karein."
-        st.info(msg)
-        if current_alert_key not in st.session_state or st.session_state[current_alert_key] != "BUY":
-            st.session_state[current_alert_key] = "BUY"
+    # A. PRO BUY ENTRY TRIGGER: Price has broken out AND currently pulled back inside FVG or OB
+    if current_price > recent_high and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
+        msg = f"🔥 SMC LIVE TRADE TRIGGER (BUY) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: BUY NOW\n🎯 Entry Price: {current_price:.5f}\n🛡️ Zone: Price has retested the Institutional Zone! Place your orders."
+        st.success(f"🟢 **LIVE ENTRY ACTIVE:** {msg}")
+        
+        if current_alert_key not in st.session_state or st.session_state[current_alert_key] != "BUY_TRIGGER":
+            st.session_state[current_alert_key] = "BUY_TRIGGER"
             send_telegram_alert(msg)
             
-    elif current_price < recent_low and last_fvg_top > 0:
-        msg = f"🚨 SMC SHORT ALERT: {clean_name} ({timeframe}) ne market structure toda hai. Retest zone ({ob_price:.5f}) ke aas-pass short opportunities dekhein."
-        st.error(msg)
-        if current_alert_key not in st.session_state or st.session_state[current_alert_key] != "SHORT":
-            st.session_state[current_alert_key] = "SHORT"
+    # B. PRO SHORT ENTRY TRIGGER: Price has broken low AND currently retesting the bearish FVG/OB zone
+    elif current_price < recent_low and last_fvg_top > 0 and (last_fvg_bottom <= current_price <= last_fvg_top or abs(current_price - ob_price) / ob_price < 0.001):
+        msg = f"🔥 SMC LIVE TRADE TRIGGER (SHORT/SELL) 🔥\n\n📌 Asset: {clean_name} ({timeframe})\n⚡ Action: SELL NOW\n🎯 Entry Price: {current_price:.5f}\n🛡️ Zone: Price retesting the supply zone. Institutional selling active!"
+        st.error(f"🔴 **LIVE ENTRY ACTIVE:** {msg}")
+        
+        if current_alert_key not in st.session_state or st.session_state[current_alert_key] != "SHORT_TRIGGER":
+            st.session_state[current_alert_key] = "SHORT_TRIGGER"
             send_telegram_alert(msg)
+            
+    # C. ADVANCE WATCHLIST (Breakout happened but waiting for retest)
+    elif current_price > recent_high and last_fvg_top > 0 and current_price > last_fvg_top:
+        st.info(f"👀 **Watchlist:** {clean_name} ne breakout kiya hai. Abhi chalte market me entry mat lena, price ko neeche **{last_fvg_top:.5f}** ke zone me aane do. Jab touch karega tab bot instant automatic signal bhejega!")
+        if current_alert_key in st.session_state: del st.session_state[current_alert_key]
+        
+    elif current_price < recent_low and last_fvg_top > 0 and current_price < last_fvg_bottom:
+        st.info(f"👀 **Watchlist:** Mandi ka breakout ho chuka hai. Price ke wapas upar **{last_fvg_bottom:.5f}** zone me retest karne ka wait karo, tabhi perfect entry alert aayega.")
+        if current_alert_key in st.session_state: del st.session_state[current_alert_key]
+        
     else:
-        st.warning("💤 NO-TRADE ZONE: Market parameters ke andar chal raha hai. Breakout ka wait karein.")
+        st.warning("💤 **NO-TRADE ZONE:** Market ranges ke andar hai, koi institutional activity nahi hai.")
         if current_alert_key in st.session_state:
             del st.session_state[current_alert_key]
 
